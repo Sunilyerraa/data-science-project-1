@@ -1,171 +1,93 @@
-# Fake News Detection
+# Age and Gender Predictor
+**Update from old [repo](https://github.com/dandynaufaldi/Age-Gender-Predictor)**
 
-Fake News Detection in Python
+## Environment Setup
+### Docker with GPU support
+- Get [docker](https://docs.docker.com/install/) and [nvidia-docker](https://github.com/NVIDIA/nvidia-docker)
+- Pull my [docker image](https://hub.docker.com/r/dandynaufaldi/tf-keras-cuda9-cudnn7/) by `docker pull dandynaufaldi/tf-keras-cuda9-cudnn7`, the Dockerfile will come in future  
+### Manually
+Using python 3.5, core libraries are :
+- [dlib](https://github.com/davisking/dlib)
+- tensorflow
+- keras
+- opencv
+- mxnet
 
-In this project, we have used various natural language processing techniques and machine learning algorithms to classify fake news articles using sci-kit libraries from python. 
+## Datasets
+Datasets are saved in data/ directory
+- [IMDB-Wiki](https://data.vision.ee.ethz.ch/cvl/rrothe/imdb-wiki/)
+- [Adience](https://talhassner.github.io/home/projects/Adience/Adience-data.html)
+- [UTKFace](https://susanqq.github.io/UTKFace/)
+- [FGNET](http://yanweifu.github.io/FG_NET_data/index.html)
+### Age Distribution
+![dist](docs/age_dist.png)
 
-## Getting Started
+## Preprocess (for training)
+For complete instruction, check on data/ directory
+- For IMDB and Wiki dataset remove any unsual data from its .mat file with following characteristics:
+    - Age is below 0 and above 100
+    - Face score is NaN
+    - Second face score is exist
+    - Missing gender label
+- Manual cleansing on IMDB-Wiki data with age 0-20 using [tools](https://github.com/dandynaufaldi/validation-tool)
+- Detect and align face using dlib with margin 0.4 (following [1] margin size)
+- Remove image which has no face detected or the face is unclear so it's not detected
+- Data normalization following each model requirement (in model's prep_image method)
 
-These instructions will get you a copy of the project up and running on your local machine for development and testing purposes. See deployment for notes on how to deploy the project on a live system.
+## Model
+Here we use 3 model
+### InceptionV3 and MobileNetV2
+We use InceptionV3 and MobileNetV2 from keras-application without it's classifier output and modify it to have 2 output layer. 
+One for gender prediction with 2 nodes and another for age prediction with 101 nodes (represent age 0-100).
+We treat age prediction as multiclass classification problem with it's output calculated from softmax regression as in [1] reference
+### SSR-Net
+We follow default SSR-Net architecture with some modification. At the top we have 1 classifier block which then feed into 2 classifier block. In SSR-Net, we treat prediction as regression problem for both age and gender 
 
-### Prerequisites
+## Train
+For InceptionV3 and MobileNetV2 we used pretrained weight from keras-application which was trained on ImageNet dataset. So, we do transfer learning on InceptionV3 and MobileNetV2. And, training from scratch on SSR-Net
+Training was done in AWS P3 instance with Nvidia Tesla V100 with 10 fold cross-validation and 50 epoch each to check for model consistency and get weight file with best metrics
+For each model, following input size is used:
+- InceptionV3 : 140 x 140 px
+- MobileNetV2 : 96 x 96 px
+- SSR-Net : 64 x 64 px
+Here is the training history
+### InceptionV3
+![log inceptionv3](docs/log_inceptionv3.jpg)
+### MobileNetV2
+![log mobilenetv2](docs/log_mobilenetv2.jpg)
+### SSR-Net
+![log ssrnet](docs/log_ssrnet.jpg)
+## Evaluation
+For model performance evaluation, we use UTKFace and FGNET dataset. Here we also try age and gender model from InsightFace project which was build on ResNet50 architecture.
+We also crawl some Indonesian artist faces from wikipedia with total of 51 validated images
+Here is the result (model in top position hold the best score)
+### UTKFace Dataset
+![UTKFace Gender Acc Bar](docs/utk_gender_accbar.jpg)
+![UTKFace Age MAE](docs/utk_age_maebar.jpg)
+### FGNET Dataset
+![FGNET Age MAE](docs/fgnet_age_maebar.jpg)
+### Indonesian Face
+![Indonesia Gender Acc Bar](docs/indo_gender_accbar.jpg)
+![Indonesia Age MAE](docs/indo_age_maebar.jpg)
+### Inference time - performance score
+![inference](docs/infere_time.jpg)
 
-What things you need to install the software and how to install them:
+## Demo Video Stream
+Use `stream.py` to try the models. SORT tracker is integrated to add age and gender prediction smoothing for prediction result
+Usage :
+```bash
+usage: video.py [-h] [-s SRC]
 
-1. Python 3.6 
-   - This setup requires that your machine has python 3.6 installed on it. you can refer to this url https://www.python.org/downloads/ to download python. Once you have python downloaded and installed, you will need to setup PATH variables (if you want to run python program directly, detail instructions are below in *how to run software section*). To do that check this: https://www.pythoncentral.io/add-python-to-path-python-is-not-recognized-as-an-internal-or-external-command/.  
-   - Setting up PATH variable is optional as you can also run program without it and more instruction are given below on this topic. 
-2. Second and easier option is to download anaconda and use its anaconda prompt to run the commands. To install anaconda check this url https://www.anaconda.com/download/
-3. You will also need to download and install below 3 packages after you install either python or anaconda from the steps above
-   - Sklearn (scikit-learn)
-   - numpy
-   - scipy
-   
-  - if you have chosen to install python 3.6 then run below commands in command prompt/terminal to install these packages
-   ```
-   pip install -U scikit-learn
-   pip install numpy
-   pip install scipy
-   ```
-   - if you have chosen to install anaconda then run below commands in anaconda prompt to install these packages
-   ```
-   conda install -c scikit-learn
-   conda install -c anaconda numpy
-   conda install -c anaconda scipy
-   ```   
-
-#### Dataset used
-The data source used for this project is LIAR dataset which contains 3 files with .tsv format for test, train and validation. Below is some description about the data files used for this project.
-	
-LIAR: A BENCHMARK DATASET FOR FAKE NEWS DETECTION
-
-William Yang Wang, "Liar, Liar Pants on Fire": A New Benchmark Dataset for Fake News Detection, to appear in Proceedings of the 55th Annual Meeting of the Association for Computational Linguistics (ACL 2017), short paper, Vancouver, BC, Canada, July 30-August 4, ACL.
-
-the original dataset contained 13 variables/columns for train, test and validation sets as follows:
-
-* Column 1: the ID of the statement ([ID].json).
-* Column 2: the label. (Label class contains: True, Mostly-true, Half-true, Barely-true, FALSE, Pants-fire)
-* Column 3: the statement.
-* Column 4: the subject(s).
-* Column 5: the speaker.
-* Column 6: the speaker's job title.
-* Column 7: the state info.
-* Column 8: the party affiliation.
-* Column 9-13: the total credit history count, including the current statement.
-* 9: barely true counts.
-* 10: false counts.
-* 11: half true counts.
-* 12: mostly true counts.
-* 13: pants on fire counts.
-* Column 14: the context (venue / location of the speech or statement).
-
-To make things simple we have chosen only 2 variables from this original dataset for this classification. The other variables can be added later to add some more complexity and enhance the features.
-
-Below are the columns used to create 3 datasets that have been in used in this project
-* Column 1: Statement (News headline or text).
-* Column 2: Label (Label class contains: True, False)
- 
-You will see that newly created dataset has only 2 classes as compared to 6 from original classes. Below is method used for reducing the number of classes.
-
-* Original 	--	New
-* True	   	--	True
-* Mostly-true	-- 	True
-* Half-true	-- 	True
-* Barely-true	-- 	False
-* False		-- 	False
-* Pants-fire	-- 	False
-
-The dataset used for this project were in csv format named train.csv, test.csv and valid.csv and can be found in repo. The original datasets are in "liar" folder in tsv format.
-
-
-### File descriptions
-
-#### DataPrep.py
-This file contains all the pre processing functions needed to process all input documents and texts. First we read the train, test and validation data files then performed some pre processing like tokenizing, stemming etc. There are some exploratory data analysis is performed like response variable distribution and data quality checks like null or missing values etc.
-
-#### FeatureSelection.py
-In this file we have performed feature extraction and selection methods from sci-kit learn python libraries. For feature selection, we have used methods like simple bag-of-words and n-grams and then term frequency like tf-tdf weighting. we have also used word2vec and POS tagging to extract the features, though POS tagging and word2vec has not been used at this point in the project.
-
-#### classifier.py
-Here we have build all the classifiers for predicting the fake news detection. The extracted features are fed into different classifiers. We have used Naive-bayes, Logistic Regression, Linear SVM, Stochastic gradient descent and Random forest classifiers from sklearn. Each of the extracted features were used in all of the classifiers. Once fitting the model, we compared the f1 score and checked the confusion matrix. After fitting all the classifiers, 2 best performing models were selected as candidate models for fake news classification. We have performed parameter tuning by implementing GridSearchCV methods on these candidate models and chosen best performing parameters for these classifier. Finally selected model was used for fake news detection with the probability of truth. In Addition to this, We have also extracted the top 50 features from our term-frequency tfidf vectorizer to see what words are most and important in each of the classes. We have also used Precision-Recall and learning curves to see how training and test set performs when we increase the amount of data in our classifiers.
-
-#### prediction.py
-Our finally selected and best performing classifier was ```Logistic Regression``` which was then saved on disk with name ```final_model.sav```. Once you close this repository, this model will be copied to user's machine and will be used by prediction.py file to classify the fake news. It takes an news article as input from user then model is used for final classification output that is shown to user along with probability of truth.
-
-Below is the Process Flow of the project:
-
-<p align="center">
-  <img width="600" height="750" src="https://github.com/nishitpatel01/Fake_News_Detection/blob/master/images/ProcessFlow.PNG">
-</p>
-
-### Performance
-Below is the learning curves for our candidate models. 
-
-**Logistic Regression Classifier**
-
-<p align="center">
-  <img width="550" height="450" src="https://github.com/nishitpatel01/Fake_News_Detection/blob/master/images/LR_LCurve.PNG">
-</p>
-
-**Random Forest Classifier**
-
-<p align="center">
-  <img width="550" height="450" src="https://github.com/nishitpatel01/Fake_News_Detection/blob/master/images/RF_LCurve.png">
-</p>
-
-### Next steps
-As we can see that our best performing models had an f1 score in the range of 70's. This is due to less number of data that we have used for training purposes and simplicity of our models. For the future implementations, we could introduce some more feature selection methods such as POS tagging, word2vec and topic modeling. In addition, we could also increase the training data size. We will extend this project to implement these techniques in future to increase the accuracy and performance of our models.
-
-
-### Installing and steps to run the software
-
-A step by step series of examples that tell you have to get a development env running
-
-1. The first step would be to clone this repo in a folder in your local machine. To do that you need to run following command in command prompt or in git bash
-```
-$ git clone https://github.com/nishitpatel01/Fake_News_Detection.git
+optional arguments:
+  -h, --help         show this help message and exit
+  -s SRC, --src SRC  Video stream source, default will be webcam (0)
 ```
 
-2. This will copy all the data source file, program files and model into your machine.
-
-3.
-   - If you have chosen to install anaconda then follow below instructions
-     - After all the files are saved in a folder in your machine. If you chosen to install anaconda from the steps given in 	               ```Prerequisites``` sections then open the anaconda prompt, change the directory to the folder where this project is saved in     your machine and type below command and press enter.
-	```
-	cd C:/your cloned project folder path goes here/
-	```
-     - Once you are inside the directory call the ```prediction.py``` file, To do this, run below command in anaconda prompt.
-	```
-	python prediction.py
-	```
-     - After hitting the enter, program will ask for an input which will be a piece of information or a news headline that you 	    	   want to verify. Once you paste or type news headline, then press enter.
-
-     - Once you hit the enter, program will take user input (news headline) and will be used by model to classify in one of  categories of "True" and "False". Along with classifying the news headline, model will also provide a probability of truth associated with it.
-
-4.  If you have chosen to install python (and did not set up PATH variable for it) then follow below instructions:
-    - After you clone the project in a folder in your machine. Open command prompt and change the directory to project directory by running below command.
-    ```
-    cd C:/your cloned project folder path goes here/
-    ```
-    - Locate ```python.exe``` in your machine. you can search this in window explorer search bar. 
-    - Once you locate the ```python.exe``` path, you need to write whole path of it and then entire path of project folder with ```prediction.py``` at the end. For example if your ```python.exe``` is located at ```c:/Python36/python.exe``` and project folder is at ```c:/users/user_name/desktop/fake_news_detection/```, then your command to run program will be as below:
-    ```
-    c:/Python36/python.exe C:/users/user_name/desktop/fake_news_detection/prediction.py
-    ```
-    - After hitting the enter, program will ask for an input which will be a piece of information or a news headline that you 	    	   want to verify. Once you paste or type news headline, then press enter.
-
-    - Once you hit the enter, program will take user input (news headline) and will be used by model to classify in one of  categories of "True" and "False". Along with classifying the news headline, model will also provide a probability of truth associated with it. It might take few seconds for model to classify the given statement so wait for it.
-
-5.  If you have chosen to install python (and already setup PATH variable for ```python.exe```) then follow instructions:
-    - Open the command prompt and change the directory to project folder as mentioned in above by running below command
-    ```
-    cd C:/your cloned project folder path goes here/
-    ```
-    - run below command
-    ```
-    python.exe C:/your cloned project folder path goes here/
-    ```
-    - After hitting the enter, program will ask for an input which will be a piece of information or a news headline that you 	    	   want to verify. Once you paste or type news headline, then press enter.
-
-    - Once you hit the enter, program will take user input (news headline) and will be used by model to classify in one of  categories of "True" and "False". Along with classifying the news headline, model will also provide a probability of truth associated with it.
-
+## References and Acknowledgments
+This project is part of my internship program at [Nodeflux](https://nodeflux.io/) as data scientist from July - August, 2018
+1. [Rothe R, Timofte R, Van Gool L. Dex: Deep expectation of apparent age from a single image[C]//Proceedings of the IEEE International Conference on Computer Vision Workshops. 2015: 10-15.](https://www.vision.ee.ethz.ch/en/publications/papers/proceedings/eth_biwi_01229.pdf)
+2. [Rothe R, Timofte R, Van Gool L. Deep expectation of real and apparent age from a single image without facial landmarks[J]. International Journal of Computer Vision, 2016: 1-14.](https://www.vision.ee.ethz.ch/en/publications/papers/articles/eth_biwi_01299.pdf)
+3. [[IJCAI18] SSR-Net: A Compact Soft Stagewise Regression Network for Age Estimation](https://github.com/shamangary/SSR-Net)
+4. [yu4u/age-gender-estimation Keras implementation of a CNN network for age and gender estimation](https://github.com/yu4u/age-gender-estimation)
+5. [deepinsight/insightface Face Recognition Project on MXNet](https://github.com/deepinsight/insightface)
+6. [abewley/sort Simple, online, and realtime tracking of multiple objects in a video sequence](https://github.com/abewley/sort)
